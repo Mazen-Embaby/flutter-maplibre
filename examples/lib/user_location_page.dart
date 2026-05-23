@@ -5,9 +5,14 @@ import 'package:maplibre_example/utils/map_styles.dart';
 
 @immutable
 class UserLocationPage extends StatefulWidget {
-  const UserLocationPage({super.key});
+  const UserLocationPage({
+    super.key,
+    this.onEvent,
+  });
 
   static const location = '/user-location';
+
+  final MapEventCallback? onEvent;
 
   @override
   State<UserLocationPage> createState() => _UserLocationPageState();
@@ -16,6 +21,18 @@ class UserLocationPage extends StatefulWidget {
 class _UserLocationPageState extends State<UserLocationPage> {
   final _permissionManager = PermissionManager();
   late final MapController _controller;
+  String? _lastEventMessage;
+
+  void _onMapEvent(MapEvent event) {
+    if (event is MapEventUserInput) {
+      _lastEventMessage = 'User input detected: ${event.point}';
+      if (context.mounted) {
+        context.showSnackBox('Camera tracking dismissed / user input detected');
+      }
+      setState(() {});
+    }
+    widget.onEvent?.call(event);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -86,6 +103,14 @@ class _UserLocationPageState extends State<UserLocationPage> {
               ],
             ),
           ),
+          if (_lastEventMessage != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                _lastEventMessage!,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
           Expanded(
             child: MapLibreMap(
               options: MapOptions(
@@ -93,7 +118,22 @@ class _UserLocationPageState extends State<UserLocationPage> {
                 initCenter: const Geographic(lon: 0, lat: 0),
                 initStyle: MapStyles.protomapsLight.uri,
               ),
+              onCameraTrackingChange: ({required isTracking}) {
+                _lastEventMessage = isTracking
+                    ? 'Camera tracking enabled'
+                    : 'Camera tracking dismissed';
+                if (context.mounted) {
+                  context.showSnackBox(
+                    isTracking
+                        ? 'Location tracking enabled.'
+                        : 'Camera tracking dismissed.',
+                  );
+                }
+                setState(() {});
+              },
               onMapCreated: (controller) => _controller = controller,
+              onEvent: _onMapEvent,
+              children: const [MapCompass()],
             ),
           ),
         ],

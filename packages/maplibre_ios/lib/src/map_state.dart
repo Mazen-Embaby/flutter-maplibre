@@ -17,6 +17,7 @@ final class MapLibreMapStateIos extends MapLibreMapState {
   late final int _viewId;
   MLNMapView? _mapView;
   bool _pendingStyleLoaded = true;
+  bool _isCameraTracking = false;
 
   @override
   StyleControllerIos? style;
@@ -67,6 +68,10 @@ final class MapLibreMapStateIos extends MapLibreMapState {
         widget.onEvent?.call(event);
       },
       onUserInputWithScreenLocation_: (screenLocation) {
+        if (_isCameraTracking) {
+          _isCameraTracking = false;
+          widget.onCameraTrackingChange?.call(isTracking: false);
+        }
         final offset = screenLocation.toOffset();
         final point = toLngLat(offset);
         widget.onEvent?.call(
@@ -383,9 +388,15 @@ final class MapLibreMapStateIos extends MapLibreMapState {
   }) async {
     final mapView = _mapView!;
     if (!trackLocation) {
+      if (_isCameraTracking) {
+        _isCameraTracking = false;
+        widget.onCameraTrackingChange?.call(isTracking: false);
+      }
       mapView.userTrackingMode = MLNUserTrackingMode.MLNUserTrackingModeNone;
       return;
     }
+    _isCameraTracking = true;
+    widget.onCameraTrackingChange?.call(isTracking: true);
     mapView.userTrackingMode = switch (trackBearing) {
       BearingTrackMode.none => MLNUserTrackingMode.MLNUserTrackingModeFollow,
       BearingTrackMode.compass =>

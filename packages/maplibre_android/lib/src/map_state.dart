@@ -1,12 +1,26 @@
+// ignore_for_file: invalid_use_of_internal_member
+
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' hide Layer;
 import 'package:flutter/services.dart';
+import 'package:jni/_internal.dart'
+    show
+        Int64,
+        JObjectPtr,
+        MethodInvocation,
+        NativeFunction,
+        Pointer,
+        ProtectedJniExtensions,
+        RawReceivePort,
+        nullptr;
 import 'package:jni/jni.dart';
+import 'package:jni/jni.dart' as raw_jni;
 import 'package:maplibre_android/src/extensions.dart';
 import 'package:maplibre_android/src/flutter_api.dart';
 import 'package:maplibre_android/src/functions.dart';
@@ -29,6 +43,63 @@ final class _MoveGestureDetector {
       _getFocalPointId.call(detector, jni.PointF.type, []);
 }
 
+final class _CameraTrackingChangedListener {
+  static final Map<int, void Function()> _dismissCallbacks = {};
+
+  static JObjectPtr _invoke(int port, JObjectPtr descriptor, JObjectPtr args) {
+    return _invokeMethod(
+      port,
+      MethodInvocation.fromAddresses(0, descriptor.address, args.address),
+    );
+  }
+
+  static final Pointer<
+    NativeFunction<JObjectPtr Function(Int64, JObjectPtr, JObjectPtr)>
+  >
+  _invokePointer = Pointer.fromFunction(_invoke);
+
+  static JObjectPtr _invokeMethod(int port, MethodInvocation invocation) {
+    try {
+      final descriptor = invocation.methodDescriptor.toDartString(
+        releaseOriginal: true,
+      );
+      if (descriptor == 'onCameraTrackingDismissed()V') {
+        _dismissCallbacks[port]?.call();
+        return nullptr;
+      }
+      if (descriptor == 'onCameraTrackingChanged(I)V') {
+        return nullptr;
+      }
+    } catch (error) {
+      return ProtectedJniExtensions.newDartException(error);
+    }
+    return nullptr;
+  }
+
+  static JObject implement(void Function() onCameraTrackingDismissed) {
+    final implementer = raw_jni.JImplementer();
+    late final RawReceivePort port;
+    port = RawReceivePort((Object? message) {
+      if (message == null) {
+        _dismissCallbacks.remove(port.sendPort.nativePort);
+        port.close();
+        return;
+      }
+      final invocation = MethodInvocation.fromMessage(message as List<dynamic>);
+      final result = _invokeMethod(port.sendPort.nativePort, invocation);
+      ProtectedJniExtensions.returnResult(invocation.result, result);
+    });
+    _dismissCallbacks[port.sendPort.nativePort] = onCameraTrackingDismissed;
+    implementer.add(
+      'org.maplibre.android.location.OnCameraTrackingChangedListener',
+      port,
+      _invokePointer,
+      const [],
+    );
+    return implementer.implement<raw_jni.JObject>();
+  }
+}
+
 /// The implementation that gets used for state of the [MapLibreMap] widget on
 /// android using JNI and Pigeon as a fallback.
 final class MapLibreMapStateAndroid extends MapLibreMapState
@@ -38,6 +109,16 @@ final class MapLibreMapStateAndroid extends MapLibreMapState
   jni.MapLibreMap? _jMap;
   jni.Projection? _cachedJProjection;
   jni.LocationComponent? _cachedJLocationComponent;
+  late final raw_jni.JObject _cameraTrackingChangedListener =
+      _CameraTrackingChangedListener.implement(() {
+        widget.onEvent?.call(
+          MapEventUserInput(
+            point: camera?.center ?? const Geographic(lon: 0, lat: 0),
+            screenPoint: Offset.zero,
+          ),
+        );
+        widget.onCameraTrackingChange?.call(isTracking: false);
+      });
   bool _mapViewStarted = false;
 
   @override
@@ -291,6 +372,9 @@ final class MapLibreMapStateAndroid extends MapLibreMapState
       ..latLngBoundsForCameraTarget = options.maxBounds?.toJLatLngBounds(
         arena: arena,
       );
+    _jLocationComponent.addOnCameraTrackingChangedListener(
+      _cameraTrackingChangedListener,
+    );
     setStyle(options.initStyle);
     widget.onEvent?.call(MapEventMapCreated(mapController: this));
     widget.onMapCreated?.call(this);
@@ -322,6 +406,11 @@ final class MapLibreMapStateAndroid extends MapLibreMapState
       jMap.removeOnCameraMoveListener(_mapCameraMoveListener);
       jMap.removeOnCameraIdleListener(_mapCameraIdleListener);
       jMap.removeOnCameraMoveStartedListener(_cameraMoveStartedListener);
+      if (_cachedJLocationComponent case final jLocationComponent?) {
+        jLocationComponent.removeOnCameraTrackingChangedListener(
+          _cameraTrackingChangedListener,
+        );
+      }
       _jMap = null;
       jMap.release();
     }
@@ -330,6 +419,7 @@ final class MapLibreMapStateAndroid extends MapLibreMapState
     _mapCameraMoveListener.release();
     _mapCameraIdleListener.release();
     _cameraMoveStartedListener.release();
+    _cameraTrackingChangedListener.release();
     if (_cachedJProjection case final jProjection?) {
       _cachedJProjection = null;
       jProjection.release();

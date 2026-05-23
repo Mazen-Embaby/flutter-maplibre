@@ -22,6 +22,7 @@ final class MapLibreMapStateWeb extends MapLibreMapState {
   late interop.JsMap _map;
   Completer<interop.MapLibreEvent>? _movementCompleter;
   bool _nextGestureCausedByController = false;
+  bool _isCameraTracking = false;
   LayerManager? _layerManager;
 
   /// Get the [MapOptions] from [MapLibreMap.options].
@@ -43,6 +44,10 @@ final class MapLibreMapStateWeb extends MapLibreMapState {
         ..style.height = '100%'
         ..style.width = '100%';
       _htmlElement.addEventListener('pointerdown', (event) {
+        if (_isCameraTracking) {
+          _isCameraTracking = false;
+          widget.onCameraTrackingChange?.call(isTracking: false);
+        }
         final domEvent = event as dynamic;
         final rect = _htmlElement.getBoundingClientRect();
         final offset = Offset(
@@ -55,6 +60,10 @@ final class MapLibreMapStateWeb extends MapLibreMapState {
         );
       });
       _htmlElement.addEventListener('wheel', (event) {
+        if (_isCameraTracking) {
+          _isCameraTracking = false;
+          widget.onCameraTrackingChange?.call(isTracking: false);
+        }
         final domEvent = event as dynamic;
         final rect = _htmlElement.getBoundingClientRect();
         final offset = Offset(
@@ -441,6 +450,11 @@ final class MapLibreMapStateWeb extends MapLibreMapState {
     bool trackLocation = true,
     BearingTrackMode trackBearing = BearingTrackMode.gps,
   }) async {
+    final wasTracking = _isCameraTracking;
+    _isCameraTracking = trackLocation;
+    if (wasTracking != _isCameraTracking) {
+      widget.onCameraTrackingChange?.call(isTracking: _isCameraTracking);
+    }
     debugPrint("Can't track the user location on web.");
   }
 

@@ -3,6 +3,12 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:maplibre_platform_interface/maplibre_platform_interface.dart';
 
+/// Callback that fires when camera tracking status changes.
+///
+/// {@category Basic}
+/// {@category Events}
+typedef CameraTrackingChangeCallback = void Function({required bool isTracking});
+
 /// The [MapLibreMap] widget that can be inserted into the flutter widget tree.
 ///
 /// {@category Basic}
@@ -15,6 +21,7 @@ class MapLibreMap extends StatefulWidget {
     this.gestureRecognizers,
     this.onMapCreated,
     this.onStyleLoaded,
+    this.onCameraTrackingChange,
     this.onEvent,
     this.layers = const [],
     this.children = const [],
@@ -58,6 +65,14 @@ class MapLibreMap extends StatefulWidget {
   /// Please note: you should only add style layers (e.g. symbols or circles)
   /// after this callback has been called.
   final StyleLoadedCallback? onStyleLoaded;
+
+  /// Called when camera tracking status changes.
+  ///
+  /// The callback parameter indicates whether location tracking is currently
+  /// active (true) or has been dismissed (false). On Android, this event is
+  /// emitted when the location tracking camera is interrupted by user touch
+  /// gestures, or when tracking is enabled/disabled.
+  final CameraTrackingChangeCallback? onCameraTrackingChange;
 
   /// Use this callback to handle emitted map events.
   final MapEventCallback? onEvent;
